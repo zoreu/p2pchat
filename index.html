@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>P2P Chat</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00a884">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --whatsapp-green: #00a884;
+  --whatsapp-dark: #111b21;
+  --whatsapp-darker: #0b141a;
+  --whatsapp-gray: #202c33;
+  --whatsapp-light-gray: #2a3942;
+  --whatsapp-text: #d1d7db;
+  --whatsapp-text-light: #8696a0;
+  --whatsapp-mine: #005c4b;
+  --whatsapp-other: #202c33;
+  --whatsapp-red: #ea4335;
+  --discord-purple: #5865f2;
+  --discord-dark: #1e1f22;
+  --discord-darker: #1a1b1e;
+  --voice-green: #43b581;
+  --voice-red: #f04747;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--whatsapp-dark);
+  color: var(--whatsapp-text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* ===== LOGIN ===== */
+#loginScreen {
+  height: 100vh; display: flex; flex-direction: column; justify-content: center;
+  align-items: center; background: var(--whatsapp-darker); padding: 20px;
+}
+#loginScreen h2 { color: var(--whatsapp-green); font-size: 28px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+#loginScreen .subtitle { color: var(--whatsapp-text-light); font-size: 13px; margin-bottom: 30px; }
+.login-tabs { display: flex; max-width: 320px; width: 100%; margin-bottom: 20px; border-radius: 30px; overflow: hidden; border: 1px solid var(--whatsapp-light-gray); }
+.login-tab { flex: 1; padding: 12px; text-align: center; background: var(--whatsapp-gray); color: var(--whatsapp-text-light); cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s; border: none; }
+.login-tab.active { background: var(--whatsapp-green); color: white; }
+#loginScreen input { width: 100%; max-width: 320px; padding: 15px 20px; border-radius: 30px; border: none; outline: none; background: var(--whatsapp-light-gray); color: var(--whatsapp-text); font-size: 16px; margin-bottom: 12px; }
+#loginScreen input::placeholder { color: var(--whatsapp-text-light); }
+.login-btn { width: 100%; max-width: 320px; padding: 15px; border-radius: 30px; border: none; background: var(--whatsapp-green); color: white; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; margin-top: 5px; }
+.login-btn:hover { opacity: 0.9; }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-info { margin-top: 20px; color: var(--whatsapp-text-light); font-size: 12px; max-width: 320px; text-align: center; line-height: 1.5; }
+.login-info .security-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(0,168,132,0.15); color: var(--whatsapp-green); padding: 4px 10px; border-radius: 12px; font-size: 11px; margin-top: 8px; }
+.password-strength { width: 100%; max-width: 320px; height: 3px; background: var(--whatsapp-light-gray); border-radius: 3px; margin-bottom: 12px; overflow: hidden; }
+.password-strength-bar { height: 100%; border-radius: 3px; transition: width 0.3s, background 0.3s; width: 0%; }
+.login-error { color: var(--whatsapp-red); font-size: 13px; max-width: 320px; text-align: center; margin-top: 10px; min-height: 20px; }
+/* ajuste no login */
+#registerForm, #loginForm{  width: 334px;      /* precisa ter largura */
+  margin: 0 auto;    /* centraliza horizontalmente */
+}
+
+/* ===== APP ===== */
+#appScreen { height: 100vh; display: flex; flex-direction: column; background: var(--whatsapp-darker); }
+.tabs { display: flex; background: var(--whatsapp-gray); padding: 10px 16px; gap: 12px; border-bottom: 1px solid var(--whatsapp-light-gray); }
+.tab { display: flex; align-items: center; gap: 6px; padding: 8px 0; color: var(--whatsapp-text-light); font-weight: 500; position: relative; cursor: pointer; flex: 1; justify-content: center; font-size: 13px; }
+.tab.active { color: var(--whatsapp-green); }
+.tab.active::after { content: ''; position: absolute; bottom: -11px; left: 0; right: 0; height: 3px; background: var(--whatsapp-green); border-radius: 3px 3px 0 0; }
+.tab-content { flex: 1; overflow: hidden; position: relative; }
+.tab-pane { height: 100%; overflow-y: auto; display: none; }
+.tab-pane.active { display: flex; flex-direction: column; }
+
+/* ===== FRIENDS & CHATS ===== */
+.friends-header { background: var(--whatsapp-gray); padding: 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--whatsapp-light-gray); }
+.friends-header h3 { font-size: 20px; font-weight: 600; }
+.header-buttons { display: flex; gap: 8px; }
+.my-id-btn { background: var(--whatsapp-light-gray); color: var(--whatsapp-text); border: none; border-radius: 20px; padding: 8px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+.friends-list { flex: 1; overflow-y: auto; background: var(--whatsapp-darker); }
+.friend-item { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--whatsapp-light-gray); cursor: pointer; transition: background 0.2s; position: relative; }
+.friend-item:hover { background: var(--whatsapp-gray); }
+.friend-avatar { width: 49px; height: 49px; border-radius: 50%; background: var(--whatsapp-green); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; color: white; margin-right: 15px; flex-shrink: 0; }
+.friend-info { flex: 1; min-width: 0; }
+.friend-name { font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.friend-last-msg { font-size: 13px; color: var(--whatsapp-text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.friend-time { font-size: 11px; color: var(--whatsapp-text-light); position: absolute; top: 12px; right: 16px; }
+.friend-status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #4CAF50; }
+.friend-status.offline { background: var(--whatsapp-text-light); }
+.friend-unread { background: var(--whatsapp-green); color: white; border-radius: 50%; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; position: absolute; bottom: 12px; right: 16px; }
+.contact-badge { color: var(--whatsapp-text-light); font-size: 11px; margin-left: 5px; font-weight: normal; }
+.add-friend-area { padding: 16px; background: var(--whatsapp-gray); border-top: 1px solid var(--whatsapp-light-gray); }
+.add-friend-input { width: 100%; padding: 12px 16px; border-radius: 24px; border: none; outline: none; background: var(--whatsapp-light-gray); color: var(--whatsapp-text); font-size: 14px; margin-bottom: 10px; }
+.add-friend-btn { width: 100%; padding: 12px; border-radius: 24px; border: none; background: var(--whatsapp-green); color: white; font-weight: 600; cursor: pointer; }
+
+/* ===== CHAT CONTAINER ===== */
+.chat-container { height: 100vh; display: flex; flex-direction: column; background: var(--whatsapp-darker); }
+.chat-header { background: var(--whatsapp-gray); padding: 10px 16px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--whatsapp-light-gray); }
+.back-btn { background: none; border: none; color: var(--whatsapp-text); font-size: 24px; cursor: pointer; }
+.chat-header-info { flex: 1; }
+.chat-header-name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.chat-header-status { font-size: 12px; color: var(--whatsapp-text-light); }
+.chat-header-actions { display: flex; gap: 6px; }
+.header-action-btn { background: none; border: none; color: var(--whatsapp-text); font-size: 18px; cursor: pointer; padding: 5px; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+.header-action-btn:hover { background: var(--whatsapp-light-gray); }
+.chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 4px; background: #0b141a; }
+.message { max-width: 75%; padding: 8px 12px; border-radius: 12px; font-size: 14px; line-height: 1.4; word-wrap: break-word; position: relative; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.message.mine { align-self: flex-end; background: var(--whatsapp-mine); border-bottom-right-radius: 4px; }
+.message.other { align-self: flex-start; background: var(--whatsapp-other); border-bottom-left-radius: 4px; }
+.message-time { font-size: 10px; opacity: 0.6; margin-left: 8px; display: inline-block; }
+.message-delete-btn { display: none; position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.5); border: none; color: white; font-size: 12px; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; align-items: center; justify-content: center; }
+.message:hover .message-delete-btn { display: flex; }
+.message-image { max-width: 100%; max-height: 300px; border-radius: 8px; margin: 4px 0; cursor: pointer; }
+.message-video { max-width: 100%; max-height: 300px; border-radius: 8px; margin: 4px 0; }
+.message-audio { width: 100%; min-width: 240px; height: 50px; margin: 6px 0; border-radius: 24px; }
+.message-audio-wrapper { min-width: 270px; width: 100%; }
+.message-file { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(0,0,0,0.15); border-radius: 8px; margin: 4px 0; cursor: pointer; text-decoration: none; color: var(--whatsapp-text); transition: background 0.2s; min-width: 200px; }
+.message-file:hover { background: rgba(0,0,0,0.25); }
+.message-file-icon { font-size: 32px; flex-shrink: 0; }
+.message-file-info { flex: 1; min-width: 0; }
+.message-file-name { font-size: 13px; font-weight: 500; word-break: break-all; line-height: 1.3; }
+.message-file-size { font-size: 11px; opacity: 0.6; margin-top: 2px; }
+.message-file-download { font-size: 22px; flex-shrink: 0; opacity: 0.7; }
+.youtube-embed { width: 100%; aspect-ratio: 16/9; border-radius: 8px; margin: 4px 0; border: none; }
+.link-preview { color: #53bdeb; text-decoration: underline; word-break: break-all; }
+.file-upload-preview { background: var(--whatsapp-gray); padding: 12px; border-radius: 12px 12px 0 0; display: flex; align-items: center; gap: 10px; }
+.file-upload-preview img, .file-upload-preview video { max-height: 80px; border-radius: 8px; }
+.file-upload-preview .file-name { flex: 1; font-size: 13px; color: var(--whatsapp-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-upload-preview .cancel-file { background: none; border: none; color: var(--whatsapp-red); font-size: 20px; cursor: pointer; }
+.transfer-progress { width: 100%; height: 4px; background: var(--whatsapp-light-gray); border-radius: 2px; margin: 4px 0; overflow: hidden; }
+.transfer-progress-bar { height: 100%; background: var(--whatsapp-green); border-radius: 2px; transition: width 0.3s; width: 0%; }
+.chat-input-area { display: flex; padding: 12px; background: var(--whatsapp-gray); gap: 8px; align-items: center; flex-wrap: wrap; }
+#filePreviewArea { width: 100%; }
+.chat-input { flex: 1; padding: 12px 16px; border-radius: 24px; border: none; outline: none; background: var(--whatsapp-light-gray); color: var(--whatsapp-text); font-size: 15px; min-width: 0; }
+.chat-input:disabled { opacity: 0.5; }
+.attach-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: none; color: var(--whatsapp-text-light); font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.attach-btn:hover { background: var(--whatsapp-light-gray); }
+.attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.send-btn { width: 45px; height: 45px; border-radius: 50%; border: none; background: var(--whatsapp-green); color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ===== CHANNELS TAB ===== */
+.channel-item {
+  display: flex; align-items: center; padding: 14px 16px;
+  border-bottom: 1px solid var(--whatsapp-light-gray); cursor: pointer; transition: background 0.2s;
+}
+.channel-item:hover { background: var(--whatsapp-gray); }
+.channel-avatar {
+  width: 49px; height: 49px; border-radius: 16px; background: var(--discord-purple);
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  color: white; margin-right: 15px; flex-shrink: 0;
+}
+.channel-info { flex: 1; min-width: 0; }
+.channel-name { font-weight: 600; font-size: 15px; margin-bottom: 3px; }
+.channel-members { font-size: 12px; color: var(--whatsapp-text-light); }
+.channel-voice-badge {
+  background: var(--voice-green); color: white; padding: 3px 10px; border-radius: 12px;
+  font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 4px;
+}
+
+/* ===== CHANNEL VIEW ===== */
+.channel-container {
+  height: 100vh; display: flex; flex-direction: column; background: var(--whatsapp-darker);
+}
+
+.channel-header {
+  background: var(--whatsapp-gray); padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid var(--whatsapp-light-gray);
+  flex-shrink: 0;
+}
+
+.channel-header-info { flex: 1; }
+.channel-header-name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.channel-header-members { font-size: 12px; color: var(--whatsapp-text-light); }
+
+/* Layout do corpo do canal: voice + membros + chat */
+.channel-body {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Voice panel */
+.voice-panel {
+  background: var(--discord-dark); padding: 10px 16px;
+  border-bottom: 1px solid var(--whatsapp-light-gray);
+  flex-shrink: 0;
+}
+
+.voice-panel-title {
+  font-size: 11px; color: var(--whatsapp-text-light); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+}
+
+.voice-users {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 28px;
+}
+
+.voice-user {
+  display: flex; align-items: center; gap: 6px; background: var(--whatsapp-light-gray);
+  padding: 5px 10px; border-radius: 20px; font-size: 12px;
+}
+
+.voice-user-speaking {
+  box-shadow: 0 0 0 2px var(--voice-green);
+  animation: speakPulse 1.5s infinite;
+}
+
+@keyframes speakPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--voice-green); }
+  50% { box-shadow: 0 0 0 4px rgba(67,181,129,0.4); }
+}
+
+.voice-user-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--voice-green);
+}
+
+.voice-user-muted .voice-user-dot { background: var(--whatsapp-red); }
+
+.voice-controls {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+}
+
+.voice-btn {
+  padding: 8px 14px; border-radius: 24px; border: none;
+  font-weight: 600; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 5px; transition: all 0.2s;
+}
+
+.voice-btn-join { background: var(--voice-green); color: white; }
+.voice-btn-join:hover { background: #3ca374; }
+.voice-btn-leave { background: var(--voice-red); color: white; }
+.voice-btn-leave:hover { background: #d63c3c; }
+.voice-btn-mute { background: var(--whatsapp-light-gray); color: var(--whatsapp-text); }
+.voice-btn-mute:hover { background: var(--whatsapp-gray); }
+.voice-btn-mute.muted { background: var(--voice-red); color: white; }
+.voice-btn-deafen { background: var(--whatsapp-light-gray); color: var(--whatsapp-text); }
+.voice-btn-deafen.deafened { background: var(--voice-red); color: white; }
+
+/* Controles de volume de voz */
+#voiceVolumeControls {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+  background: rgba(0,0,0,0.2); border-radius: 10px; padding: 8px 12px;
+}
+
+.volume-control {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+}
+
+.volume-control label {
+  font-size: 11px; color: var(--whatsapp-text-light); white-space: nowrap; min-width: 95px;
+}
+
+.volume-slider {
+  flex: 1; height: 4px; border-radius: 2px; accent-color: var(--whatsapp-green);
+  cursor: pointer; background: var(--whatsapp-light-gray);
+}
+
+.volume-label {
+  font-size: 11px; color: var(--whatsapp-text-light); min-width: 34px; text-align: right;
+}
+
+/* Botão de deletar mensagem do canal */
+.channel-msg-delete-btn {
+  display: none; background: rgba(0,0,0,0.45); border: none; color: var(--whatsapp-text);
+  font-size: 11px; border-radius: 50%; width: 20px; height: 20px; cursor: pointer;
+  align-items: center; justify-content: center; margin-left: auto; flex-shrink: 0;
+  transition: background 0.15s;
+}
+.channel-msg-delete-btn:hover { background: var(--whatsapp-red); color: white; }
+.channel-msg:hover .channel-msg-delete-btn { display: flex; }
+
+/* Menu de deleção flutuante */
+.channel-delete-menu {
+  position: fixed; background: var(--whatsapp-gray); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 5000; min-width: 180px;
+  overflow: hidden; border: 1px solid var(--whatsapp-light-gray);
+}
+
+.channel-delete-item {
+  padding: 12px 16px; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; gap: 8px; transition: background 0.15s;
+}
+.channel-delete-item:hover { background: var(--whatsapp-light-gray); }
+.channel-delete-item.danger { color: var(--whatsapp-red); }
+.channel-delete-item.cancel { color: var(--whatsapp-text-light); font-size: 12px; }
+
+/* Layout canal: chat + membros lado a lado no desktop */
+.channel-main-area {
+  flex: 1; display: flex; overflow: hidden;
+}
+
+/* Painel de membros — lateral no desktop, horizontal strip no mobile */
+.channel-members-panel {
+  background: var(--discord-dark); border-left: 1px solid var(--whatsapp-light-gray);
+  overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column;
+}
+
+/* Desktop: coluna lateral */
+@media (min-width: 601px) {
+  .channel-members-panel {
+    width: 190px;
+  }
+}
+
+/* Mobile: faixa horizontal compacta no topo da área principal */
+@media (max-width: 600px) {
+  .channel-main-area {
+    flex-direction: column;
+  }
+  .channel-members-panel {
+    width: 100%; max-height: 80px; flex-direction: row;
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    border-left: none; border-bottom: 1px solid var(--whatsapp-light-gray);
+    padding: 4px 6px; gap: 4px; align-items: center;
+    flex-shrink: 0;
+  }
+  .members-title {
+    display: none; /* esconder título no mobile para economizar espaço */
+  }
+  .member-item {
+    flex-direction: column; gap: 2px; padding: 4px 6px;
+    min-width: 52px; max-width: 60px; text-align: center;
+    border-radius: 8px; margin: 0;
+  }
+  .member-item:hover { background: var(--whatsapp-light-gray); }
+  .member-avatar {
+    width: 28px; height: 28px; font-size: 11px; margin: 0 auto;
+  }
+  .member-info { display: flex; flex-direction: column; align-items: center; }
+  .member-name {
+    font-size: 9px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 54px; display: block;
+  }
+  .member-you-badge { display: none; }
+  .member-status { font-size: 8px; }
+  .member-muted-badge { font-size: 10px; }
+}
+
+.members-title {
+  font-size: 11px; color: var(--whatsapp-text-light); text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 12px 12px 6px; font-weight: 600;
+}
+
+.member-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  cursor: pointer; border-radius: 6px; margin: 1px 4px;
+  transition: background 0.15s; position: relative;
+}
+
+.member-item:hover { background: var(--whatsapp-light-gray); }
+
+.member-avatar {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--discord-purple);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: white; flex-shrink: 0;
+}
+
+.member-info { flex: 1; min-width: 0; overflow: hidden; }
+
+.member-name {
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+.member-you-badge {
+  font-size: 9px; background: var(--whatsapp-green); color: white;
+  border-radius: 6px; padding: 1px 4px; font-weight: 600; vertical-align: middle;
+}
+
+.member-status {
+  font-size: 10px; color: var(--whatsapp-text-light);
+}
+
+.online-dot { color: var(--voice-green); }
+.voice-dot { color: var(--discord-purple); }
+
+.member-muted-badge {
+  font-size: 12px; flex-shrink: 0;
+}
+
+/* Menu de contexto de membro */
+.member-context-menu {
+  position: fixed; background: var(--whatsapp-gray); border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5); z-index: 5000; min-width: 210px;
+  overflow: hidden; border: 1px solid var(--whatsapp-light-gray);
+}
+
+.context-menu-header {
+  padding: 10px 16px; font-size: 13px; font-weight: 700; color: var(--whatsapp-text);
+  background: var(--whatsapp-light-gray); border-bottom: 1px solid var(--whatsapp-dark);
+}
+
+.context-menu-item {
+  padding: 12px 16px; cursor: pointer; font-size: 13px; display: flex;
+  align-items: center; gap: 10px; transition: background 0.15s;
+}
+
+.context-menu-item:hover { background: var(--whatsapp-light-gray); }
+
+/* Channel chat */
+.channel-messages {
+  flex: 1; overflow-y: auto; padding: 14px; display: flex;
+  flex-direction: column; gap: 5px; background: var(--discord-darker);
+}
+
+.channel-msg {
+  display: flex; gap: 10px; padding: 3px 0; animation: fadeIn 0.2s;
+}
+
+.channel-msg-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--discord-purple); display: flex; align-items: center;
+  justify-content: center; font-size: 13px; font-weight: 600; color: white;
+  flex-shrink: 0; margin-top: 2px;
+}
+
+.channel-msg-content { flex: 1; min-width: 0; }
+.channel-msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.channel-msg-author { font-weight: 600; font-size: 13px; color: var(--discord-purple); }
+.channel-msg-time { font-size: 10px; color: var(--whatsapp-text-light); }
+.channel-msg-text { font-size: 14px; line-height: 1.4; word-wrap: break-word; }
+.channel-msg-system {
+  text-align: center; color: var(--whatsapp-text-light); font-size: 11px;
+  padding: 6px; font-style: italic;
+}
+
+/* Miniatura de imagem no canal */
+.channel-img-thumb-wrap {
+  margin: 4px 0; display: inline-block;
+}
+
+.channel-img-thumb {
+  max-width: 220px; max-height: 180px; border-radius: 8px;
+  cursor: pointer; display: block; border: 2px solid var(--whatsapp-light-gray);
+  transition: opacity 0.2s, border-color 0.2s;
+}
+
+.channel-img-thumb:hover {
+  opacity: 0.85; border-color: var(--whatsapp-green);
+}
+
+.channel-inline-img {
+  max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 4px;
+}
+
+/* Arquivo no canal */
+.channel-file-dl {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: rgba(0,0,0,0.2); border-radius: 8px; margin: 4px 0;
+  text-decoration: none; color: var(--whatsapp-text); cursor: pointer;
+  transition: background 0.2s; max-width: 280px;
+}
+
+.channel-file-dl:hover { background: rgba(0,0,0,0.35); }
+
+.channel-file-icon { font-size: 28px; flex-shrink: 0; }
+
+.channel-file-info {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+}
+
+.channel-file-name {
+  font-size: 12px; font-weight: 500; word-break: break-all; line-height: 1.3;
+}
+
+.channel-file-size { font-size: 10px; opacity: 0.6; }
+
+.channel-audio { width: 100%; min-width: 200px; height: 40px; margin: 4px 0; border-radius: 20px; }
+.channel-video { max-width: 100%; max-height: 200px; border-radius: 8px; margin: 4px 0; }
+
+/* Input area do canal com anexo */
+.channel-input-area {
+  display: flex; padding: 10px 12px; background: var(--whatsapp-gray);
+  gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+}
+
+#channelFilePreviewArea { width: 100%; }
+
+.channel-input {
+  flex: 1; padding: 11px 16px; border-radius: 24px; border: none;
+  outline: none; background: var(--whatsapp-light-gray);
+  color: var(--whatsapp-text); font-size: 14px; min-width: 0;
+}
+
+/* Create channel area */
+.create-channel-area {
+  padding: 16px; background: var(--whatsapp-gray);
+  border-top: 1px solid var(--whatsapp-light-gray); flex-shrink: 0;
+}
+
+.create-channel-row {
+  display: flex; gap: 8px; margin-bottom: 8px;
+}
+
+.create-channel-input {
+  flex: 1; padding: 12px 16px; border-radius: 24px; border: none;
+  outline: none; background: var(--whatsapp-light-gray);
+  color: var(--whatsapp-text); font-size: 14px;
+}
+
+.create-channel-btn {
+  padding: 12px 20px; border-radius: 24px; border: none;
+  background: var(--discord-purple); color: white; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+
+/* ===== MODALS ===== */
+.modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; backdrop-filter: blur(5px); }
+.modal-content { background: var(--whatsapp-gray); padding: 30px 20px; border-radius: 12px; max-width: 360px; width: 90%; text-align: center; }
+.modal-content h3 { color: var(--whatsapp-green); margin-bottom: 15px; }
+.modal-content p { margin-bottom: 10px; font-size: 14px; line-height: 1.5; }
+.modal-id { background: var(--whatsapp-light-gray); padding: 15px; border-radius: 8px; margin: 15px 0; font-family: monospace; font-size: 11px; word-break: break-all; border: 1px solid var(--whatsapp-green); user-select: all; max-height: 120px; overflow-y: auto; text-align: left; line-height: 1.4; }
+.modal-buttons { display: flex; gap: 10px; justify-content: center; }
+.modal-buttons button { padding: 12px 24px; border-radius: 24px; border: none; background: var(--whatsapp-green); color: white; font-weight: 600; cursor: pointer; flex: 1; font-size: 14px; }
+.modal-buttons button.secondary { background: var(--whatsapp-light-gray); }
+.modal-buttons button.danger { background: var(--whatsapp-red); }
+
+.image-viewer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 6000; cursor: zoom-out; }
+.image-viewer img { max-width: 95%; max-height: 95%; object-fit: contain; }
+.image-viewer-close { position: absolute; top: 15px; right: 15px; background: none; border: none; color: white; font-size: 30px; cursor: pointer; }
+
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--whatsapp-gray); color: white; padding: 12px 24px; border-radius: 30px; z-index: 3000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideUp 0.3s; max-width: 90%; text-align: center; }
+@keyframes slideUp { from { transform: translate(-50%, 100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.dropdown-menu { position: absolute; top: 100%; right: 0; background: var(--whatsapp-gray); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 1000; overflow: hidden; min-width: 200px; }
+.dropdown-item { padding: 14px 20px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 12px; transition: background 0.15s; white-space: nowrap; }
+.dropdown-item:hover { background: var(--whatsapp-light-gray); }
+.dropdown-item.danger { color: var(--whatsapp-red); }
+
+.key-info { background: var(--whatsapp-light-gray); border-radius: 8px; padding: 12px; margin: 10px 0; text-align: left; }
+.key-info-label { font-size: 11px; color: var(--whatsapp-text-light); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.key-info-value { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--whatsapp-green); line-height: 1.3; }
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 600px) {
+  .friend-avatar { width: 45px; height: 45px; font-size: 18px; }
+  .chat-header, .channel-header { padding: 8px 12px; }
+  .message { max-width: 85%; }
+  .chat-messages, .channel-messages { padding: 10px; }
+  .header-action-btn { width: 30px; height: 30px; font-size: 16px; }
+  .message-audio { min-width: 200px; height: 46px; }
+  .tab { font-size: 12px; gap: 4px; }
+  .voice-controls { flex-wrap: wrap; }
+  .voice-btn { padding: 7px 12px; font-size: 11px; }
+  .channel-img-thumb { max-width: 160px; max-height: 130px; }
+}
+
+@media (min-width: 769px) {
+  #appScreen { max-width: 1400px; margin: 0 auto; border-left: 1px solid var(--whatsapp-light-gray); border-right: 1px solid var(--whatsapp-light-gray); }
+  .tabs, .tab-content, .chat-container, .channel-container { max-width: 900px; margin: 0 auto; width: 100%; }
+}
+
+@media (pointer: coarse) and (max-width: 1024px) {
+  .add-friend-area, .chat-input-area, .channel-input-area, .create-channel-area { padding-bottom: 14%; }
+}
+
+@media (display-mode: standalone) and (pointer: coarse) {
+  .add-friend-area, .chat-input-area, .channel-input-area, .create-channel-area { padding-bottom: max(5%, 6vh, env(safe-area-inset-bottom)); }
+}
+
+#fileInput { display: none; }
+#channelFileInput { display: none; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <h2>🔐 P2Pchat Secure</h2>
+  <div class="subtitle">Criptografia ponta a ponta com chaves públicas</div>
+  <div class="login-tabs">
+    <button class="login-tab active" onclick="switchLoginTab('login')">Entrar</button>
+    <button class="login-tab" onclick="switchLoginTab('register')">Criar Conta</button>
+  </div>
+  <div id="loginForm">
+    <input id="loginUsername" placeholder="Usuário" autocomplete="username" autofocus>
+    <input id="loginPassword" type="password" placeholder="Senha" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">🔓 Entrar</button>
+  </div>
+  <div id="registerForm" class="hidden">
+    <input id="regUsername" placeholder="Escolha um usuário" autocomplete="off">
+    <input id="regDisplayName" placeholder="Seu nome de exibição" autocomplete="off">
+    <input id="regPassword" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="new-password" oninput="checkPasswordStrength(this.value)">
+    <div class="password-strength"><div id="passwordStrengthBar" class="password-strength-bar"></div></div>
+    <input id="regPasswordConfirm" type="password" placeholder="Confirmar senha" autocomplete="new-password">
+    <button class="login-btn" onclick="doRegister()">🔑 Criar Conta</button>
+  </div>
+  <div id="loginError" class="login-error"></div>
+  <div class="login-info">Suas chaves são geradas localmente e a senha criptografa tudo no dispositivo.<br><span class="security-badge">🛡️ ECDH + AES-256 + PBKDF2</span></div>
+</div>
+
+<!-- APP -->
+<div id="appScreen" class="hidden">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('friends')"><span>👥</span><span>Amigos</span></div>
+    <div class="tab" onclick="switchTab('chats')"><span>💬</span><span>Conversas</span><span id="chatBadge" class="friend-unread" style="position:static;margin-left:5px;display:none;">0</span></div>
+    <div class="tab" onclick="switchTab('channels')"><span>📡</span><span>Canais</span></div>
+  </div>
+
+  <div class="tab-content">
+    <!-- Friends Tab -->
+    <div class="tab-pane active" id="friendsTab">
+      <div class="friends-header">
+        <h3>Amigos</h3>
+        <div class="header-buttons">
+          <button class="my-id-btn" onclick="showMyPublicKey()">🔑 Minha Chave</button>
+          <button class="my-id-btn" onclick="showSettings()">⚙️</button>
+        </div>
+      </div>
+      <div class="friends-list" id="friendsList"></div>
+      <div class="add-friend-area">
+        <input type="text" class="add-friend-input" id="friendKeyInput" placeholder="Cole a chave pública do amigo">
+        <button class="add-friend-btn" onclick="addFriend()">Adicionar Amigo</button>
+      </div>
+    </div>
+
+    <!-- Chats Tab -->
+    <div class="tab-pane" id="chatsTab">
+      <div class="friends-header"><h3>Conversas</h3></div>
+      <div class="friends-list" id="chatsList"></div>
+    </div>
+
+    <!-- Channels Tab -->
+    <div class="tab-pane" id="channelsTab">
+      <div class="friends-header">
+        <h3>Canais</h3>
+      </div>
+      <div class="friends-list" id="channelsList"></div>
+      <div class="create-channel-area">
+        <div class="create-channel-row">
+          <input type="text" class="create-channel-input" id="channelNameInput" placeholder="Nome do canal">
+          <button class="create-channel-btn" onclick="createChannel()">➕ Criar</button>
+        </div>
+        <div class="create-channel-row">
+          <input type="text" class="create-channel-input" id="joinChannelInput" placeholder="ID do canal para entrar">
+          <button class="create-channel-btn" onclick="joinChannelById()" style="background:var(--whatsapp-green);">🔗 Entrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DM Chat Container -->
+  <div id="chatContainer" class="chat-container hidden">
+    <div class="chat-header">
+      <button class="back-btn" onclick="closeChat()">←</button>
+      <div class="chat-header-info">
+        <div class="chat-header-name"><span id="chatFriendName"></span><span id="chatFriendStatus" class="friend-status offline"></span></div>
+        <div class="chat-header-status" id="chatFriendStatusText">offline</div>
+      </div>
+      <div class="chat-header-actions" style="position:relative;">
+        <button id="friendActionBtn" class="header-action-btn" onclick="toggleFriend()" title="Adicionar/Remover amigo">➕</button>
+        <button class="header-action-btn" onclick="toggleChatMenu(event)" title="Mais opções">⋮</button>
+        <div id="chatDropdown" class="dropdown-menu hidden">
+          <div class="dropdown-item" onclick="showFriendKey()">🔑 Ver chave do amigo</div>
+          <div class="dropdown-item" onclick="clearConversation()">🗑️ Limpar conversa</div>
+          <div class="dropdown-item danger" onclick="deleteAllAndClose()">❌ Apagar tudo e sair</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+      <div id="filePreviewArea"></div>
+      <input type="file" id="fileInput" accept="image/*,audio/*,video/*,.zip,.rar,.7z,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" onchange="handleFileSelect(event)">
+      <button class="attach-btn" id="attachBtn" onclick="document.getElementById('fileInput').click()" disabled>📎</button>
+      <input type="text" class="chat-input" id="chatInput" placeholder="Mensagem" onkeypress="if(event.key==='Enter') sendMessage()" disabled>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>➤</button>
+    </div>
+  </div>
+
+  <!-- Channel View Container -->
+  <div id="channelContainer" class="channel-container hidden">
+    <div class="channel-header">
+      <button class="back-btn" onclick="leaveChannelView()">←</button>
+      <div class="channel-avatar" id="channelViewAvatar">📡</div>
+      <div class="channel-header-info">
+        <div class="channel-header-name" id="channelViewName"></div>
+        <div class="channel-header-members" id="channelViewMembers">0 membros</div>
+      </div>
+      <div class="chat-header-actions" style="position:relative;">
+        <button class="header-action-btn" onclick="copyChannelId()" title="Copiar ID do canal">📋</button>
+        <button class="header-action-btn" onclick="toggleChannelMenu(event)">⋮</button>
+        <div id="channelDropdown" class="dropdown-menu hidden">
+          <div class="dropdown-item" onclick="copyChannelId()">📋 Copiar ID do canal</div>
+          <div class="dropdown-item danger" onclick="leaveChannel()">🚪 Sair do canal</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="channel-body">
+      <!-- Voice Panel -->
+      <div class="voice-panel">
+        <div class="voice-panel-title">🔊 Chat de Voz</div>
+        <div class="voice-users" id="voiceUsers"></div>
+        <div class="voice-controls">
+          <button class="voice-btn voice-btn-join" id="voiceJoinBtn" onclick="toggleVoice()">🎤 Entrar na Voz</button>
+          <button class="voice-btn voice-btn-mute hidden" id="voiceMuteBtn" onclick="toggleMute()">🎤 Mutar</button>
+          <button class="voice-btn voice-btn-deafen hidden" id="voiceDeafenBtn" onclick="toggleDeafen()">🔊 Surdo</button>
+        </div>
+        <!-- Controles de volume — visíveis apenas quando em voz -->
+        <div id="voiceVolumeControls" class="hidden">
+          <div class="volume-control">
+            <label>🔊 Alto-falante</label>
+            <input type="range" id="speakerVolumeSlider" class="volume-slider" min="0" max="100" value="100"
+              oninput="setSpeakerVolume(this.value)">
+            <span class="volume-label" id="speakerVolumeLabel">100%</span>
+          </div>
+          <div class="volume-control">
+            <label>🎤 Microfone</label>
+            <input type="range" id="micVolumeSlider" class="volume-slider" min="0" max="100" value="100"
+              oninput="setMicVolume(this.value)">
+            <span class="volume-label" id="micVolumeLabel">100%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Área principal: mensagens + membros -->
+      <div class="channel-main-area">
+        <!-- Channel Messages -->
+        <div class="channel-messages" id="channelMessages"></div>
+
+        <!-- Membros do canal (painel lateral) -->
+        <div class="channel-members-panel" id="channelMembersPanel">
+          <div class="members-title">👥 Membros</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input do canal com botão de anexo -->
+    <div class="channel-input-area">
+      <div id="channelFilePreviewArea"></div>
+      <input type="file" id="channelFileInput"
+        accept="image/*,audio/*,video/*,.zip,.rar,.7z,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        onchange="handleChannelFileSelect(event)">
+      <button class="attach-btn" onclick="document.getElementById('channelFileInput').click()" title="Anexar arquivo">📎</button>
+      <input type="text" class="channel-input" id="channelChatInput"
+        placeholder="Mensagem no canal..."
+        onkeypress="if(event.key==='Enter') sendChannelMessage()">
+      <button class="send-btn" onclick="sendChannelMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div id="keyModal" class="modal hidden">
+  <div class="modal-content">
+    <h3 id="keyModalTitle">🔑 Sua Chave Pública</h3>
+    <p id="keyModalDesc"></p>
+    <div id="keyModalDisplay" class="modal-id"></div>
+    <div class="modal-buttons">
+      <button onclick="copyKeyToClipboard()">📋 Copiar</button>
+      <button class="secondary" onclick="closeKeyModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-content">
+    <h3 id="confirmTitle">⚠️ Confirmação</h3>
+    <p id="confirmText"></p>
+    <div class="modal-buttons">
+      <button id="confirmYesBtn" onclick="confirmAction()">Sim</button>
+      <button class="secondary" onclick="closeConfirmModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="deleteMessageModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>🗑️ Apagar mensagem</h3>
+    <p>O que deseja fazer?</p>
+    <div class="modal-buttons" style="flex-direction:column;gap:8px;">
+      <button onclick="deleteMessageForMe()">Apagar para mim</button>
+      <button class="danger" onclick="deleteMessageForAll()">Apagar para todos</button>
+      <button class="secondary" onclick="closeDeleteMessageModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>⚙️ Configurações</h3>
+    <div class="key-info"><div class="key-info-label">Usuário</div><div class="key-info-value" id="settingsUsername"></div></div>
+    <div class="key-info"><div class="key-info-label">Nome de exibição</div><div class="key-info-value" id="settingsDisplayName"></div></div>
+    <div class="key-info"><div class="key-info-label">Peer ID</div><div class="key-info-value" id="settingsPeerId" style="font-size:10px;"></div></div>
+    <div class="key-info"><div class="key-info-label">Fingerprint</div><div class="key-info-value" id="settingsFingerprint" style="font-size:10px;"></div></div>
+    <div class="modal-buttons" style="flex-direction:column;gap:8px;margin-top:15px;">
+      <button class="secondary" onclick="closeSettingsModal()">Fechar</button>
+      <button class="danger" onclick="doLogout()">🚪 Sair</button>
+    </div>
+  </div>
+</div>
+
+<script src="p2pchat.js"></script>
+<script src="channels.js"></script>
+</body>
+</html>
